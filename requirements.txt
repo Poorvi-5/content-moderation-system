@@ -1,0 +1,28 @@
+# Core ML
+torch
+transformers
+datasets
+scikit-learn
+numpy
+pandas
+
+# Computer vision
+opencv-python
+Pillow
+torchvision
+
+# API
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+
+# MLOps
+mlflow
+dvc
+
+# Monitoring & utils
+tqdm
+python-dotenv
+pytest
+httpx
