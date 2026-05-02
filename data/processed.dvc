@@ -1,0 +1,6 @@
+outs:
+- md5: 031171170701e8b9a45667d6a6e17fab.dir
+  size: 36137547846
+  nfiles: 60002
+  hash: md5
+  path: processed
