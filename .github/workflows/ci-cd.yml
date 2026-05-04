@@ -1,0 +1,74 @@
+# .github/workflows/ci-cd.yml
+# This workflow runs automatically on every push to main.
+# It does 4 things in order:
+# 1. Sets up Python environment
+# 2. Installs dependencies
+# 3. Runs all tests
+# 4. Builds Docker image (simulated — no registry push yet)
+# If any step fails, the whole pipeline stops.
+
+name: Content Moderation CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  # ── Job 1: Run tests ──────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create required directories
+        run: |
+          mkdir -p models/text models/image data/processed/text
+
+      - name: Run unit tests
+        run: python -m pytest tests/test_risk_engine.py -v
+
+      - name: Check API imports
+        run: python -c "from src.api.risk_engine import compute_risk_score; print('API imports OK')"
+
+  # ── Job 2: Build Docker image ─────────────────────
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test        # only runs if tests pass
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -f docker/Dockerfile -t content-moderation:latest .
+          echo "Docker image built successfully"
+
+      - name: Verify image exists
+        run: docker images content-moderation
