@@ -23,8 +23,9 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_image_model(weights_path: str):
     """Loads the trained ResNet model from disk."""
-    model = models.resnet18(weights=None)
-    model.fc = nn.Linear(model.fc.in_features, 2)
+    from torchvision import models as tv_models
+    model = tv_models.resnet18(weights=None)
+    model.fc = torch.nn.Linear(model.fc.in_features, 2)
     model.load_state_dict(
         torch.load(weights_path, map_location=DEVICE)
     )
