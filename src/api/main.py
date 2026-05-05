@@ -2,7 +2,10 @@
 # The main FastAPI application.
 # This is what runs as your moderation service.
 # Three endpoints: /moderate/text, /moderate/image, /moderate/video
-
+from src.monitoring.monitor import (
+    init_db, log_prediction,
+    log_feedback, get_metrics_summary, detect_drift
+)
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -24,6 +27,7 @@ app = FastAPI(
     description="Real-time multimodal content moderation system",
     version="1.0.0"
 )
+init_db()
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,6 +91,10 @@ def moderate_text(request: TextRequest):
                                  "video": None})
 
     latency = round((time.time() - start) * 1000, 2)
+
+    log_prediction("text", result["risk_score"],
+                   result["decision"], latency,
+                   len(request.text))
 
     return ModerationResponse(
         decision        = result["decision"],
@@ -212,3 +220,40 @@ async def moderate_all(
     latency = round((time.time() - start) * 1000, 2)
 
     return {**result, "latency_ms": latency}
+
+# ── Monitoring endpoints ──────────────────────────────
+@app.get("/monitoring/metrics")
+def get_metrics(hours: int = 24):
+    """
+    Returns prediction metrics for the last N hours.
+    Shows total predictions, avg risk score, block rate,
+    decision distribution, and latency stats.
+    """
+    return get_metrics_summary(hours=hours)
+
+
+@app.get("/monitoring/drift")
+def check_drift():
+    """
+    Runs drift detection on recent predictions.
+    Compares last 6 hours vs previous 6 hours.
+    Returns drift alerts and recommendation.
+    """
+    return detect_drift()
+
+
+@app.post("/monitoring/feedback")
+def submit_feedback(
+    prediction_id:  int,
+    correct_label:  int,
+    model_decision: str
+):
+    """
+    Human moderator submits feedback on a decision.
+    correct_label: 1=toxic, 0=clean
+    This feeds into the active learning retraining loop.
+    """
+    result = log_feedback(
+        prediction_id, correct_label, model_decision
+    )
+    return {"status": "feedback logged", **result}
