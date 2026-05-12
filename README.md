@@ -65,369 +65,230 @@ Imagine a high-end nightclub with **one head bouncer** and **three specialized a
 
 ---
 
-## 🏗️ System Architecture
+Diagram 1 — Full system architecture (how a request flows from input to decision):
+<img width="1440" height="1160" alt="image" src="https://github.com/user-attachments/assets/904599e7-b9b2-49d9-a202-86dcf99068bc" />
+
+
+
+## System Flow
 
 ```mermaid
-flowchart TB
-    subgraph INPUT["📥 USER CONTENT INPUT"]
-        A1["📝 Text"]
-        A2["🖼️ Image"]
-        A3["🎥 Video"]
-    end
+flowchart TD
+    A[User submits content] --> B[FastAPI receives request]
+    B --> C1[DistilBERT checks text]
+    B --> C2[ResNet18 checks image]
+    B --> C3[Frame sampler checks video]
+    C1 --> D[Risk Engine combines scores]
+    C2 --> D
+    C3 --> D
+    D --> E{Decision}
+    E -->|score below 0.45| F[Allow]
+    E -->|score 0.45 to 0.75| G[Review]
+    E -->|score above 0.75| H[Block]
+    F --> I[Log to database]
+    G --> I
+    H --> I
+    I --> J[Drift detector runs every 6hrs]
+    J -->|drift found| K[Auto retrain models]
+    K --> C1
+```
 
-    subgraph API["🌐 API GATEWAY"]
-        B["FastAPI + Uvicorn<br/>Async Endpoints"]
-    end
-
-    subgraph MODELS["🤖 MODELS LAYER"]
-        C1["📝 DistilBERT<br/>Text Classifier<br/>6 toxicity classes"]
-        C2["🖼️ ResNet18<br/>Image Classifier<br/>violence/nudity/gore"]
-        C3["🎥 MobileNetV2<br/>Video Frame Sampler<br/>+ Temporal Smoothing"]
-    end
-
-    subgraph ENGINE["⚙️ DECISION ENGINE"]
-        D1["Risk Scoring Engine<br/>Weighted ensemble<br/>Configurable thresholds"]
-        D2["Decision Engine<br/>allow / review / block"]
-    end
-
-    subgraph OUTPUT["✅ OUTPUT"]
-        E1["🟢 ALLOW<br/>Content published"]
-        E2["🟡 REVIEW<br/>Human moderator"]
-        E3["🔴 BLOCK<br/>Content rejected"]
-    end
-
-    subgraph MONITORING["📊 MONITORING & OPS"]
-        F1[("SQLite DB<br/>Prediction logs")]
-        F2["Drift Detection<br/>Score / Latency / Volume"]
-        F3["Retraining Trigger<br/>>20% drift → retrain"]
-    end
-
-    A1 --> B
-    A2 --> B
-    A3 --> B
-    
-    B --> C1
-    B --> C2
-    B --> C3
-    
-    C1 --> D1
-    C2 --> D1
-    C3 --> D1
-    
-    D1 --> D2
-    D2 --> E1
-    D2 --> E2
-    D2 --> E3
-    
-    E2 -.->|"Human Feedback"| F1
-    D1 --> F1
-    D2 --> F1
-    
-    F1 --> F2
-    F2 -->|"Drift > Threshold"| F3
-    F3 -->|"Trigger Retraining"| C1
-    F3 -->|"Trigger Retraining"| C2
-    F3 -->|"Trigger Retraining"| C3
-
-    style INPUT fill:#e1f5fe
-    style API fill:#fff3e0
-    style MODELS fill:#f3e5f5
-    style ENGINE fill:#e8f5e9
-    style OUTPUT fill:#e0f2f1
-    style MONITORING fill:#ffebee
 ---
 
+## CI/CD Pipeline
 
-
-
-##🔁 CI/CD Pipeline
+```mermaid
 flowchart LR
-    subgraph DEV["👨‍💻 DEVELOPER"]
-        PUSH["git push origin main<br/>or Pull Request"]
-    end
+    A[git push to main] --> B[GitHub Actions starts]
+    B --> C[Run pytest tests]
+    C -->|all pass| D[Build Docker image]
+    D -->|build ok| E[Pipeline complete]
+    C -->|any fail| F[Pipeline blocked]
+```
 
-    subgraph GHA["⚙️ GITHUB ACTIONS"]
-        direction TB
-        TRIGGER["🚀 Workflow Triggered"]
-        
-        subgraph TEST["🧪 TEST STAGE"]
-            T1["Unit Tests<br/>pytest tests/"]
-            T2["Linting<br/>flake8, black"]
-            T3["Model Validation<br/>Load + dummy infer"]
-        end
-        
-        subgraph BUILD["📦 BUILD STAGE"]
-            B1["Build Docker Image<br/>docker build"]
-            B2["Tag Image<br/>git-sha + latest"]
-            B3["Security Scan<br/>trivy"]
-        end
-        
-        subgraph DEPLOY["🚀 DEPLOY STAGE"]
-            D1["Push to Registry<br/>GHCR / Docker Hub"]
-            D2["Deploy to Staging<br/>Smoke tests"]
-            D3["Deploy to Production<br/>(main branch only)"]
-        end
-        
-        TRIGGER --> TEST
-        TEST -->|"All tests pass"| BUILD
-        BUILD -->|"Image ready"| DEPLOY
-    end
-
-    subgraph NOTIFY["📢 NOTIFICATION"]
-        N1["Slack Alert<br/>Deployment status"]
-        N2["MLflow Registry<br/>Update model version"]
-    end
-
-    PUSH --> GHA
-    DEPLOY --> NOTIFY
-
-    style DEV fill:#e3f2fd
-    style GHA fill:#f3e5f5
-    style TEST fill:#e8f5e9
-    style BUILD fill:#fff3e0
-    style DEPLOY fill:#e0f2f1
-    style NOTIFY fill:#fce4ec
+---
+##Diagram 2 — CI/CD pipeline (what happens every time you push code to GitHub):
+<img width="1440" height="400" alt="image" src="https://github.com/user-attachments/assets/844f59f8-6935-43c3-9f55-1580e5c4083c" />
 
 
-##CI/CD Pipeline Steps Detail:
-Stage	Actions	Triggers	Success Criteria
-Test	Unit tests, linting, model validation	Every push & PR	All tests pass, no lint errors
-Build	Docker build, tagging, security scan	Push to main or PR	Image builds, no critical CVEs
-Deploy	Push to registry, staging deploy, prod deploy	Main branch only	Smoke tests pass, health check OK
-Notify	Slack alert, MLflow registry update	After deploy	Webhook succeeds
 
+## MLOps Loop
 
-##🔄 MLOps Continuous Loop
-flowchart TB
-    subgraph DATA["📊 DATA PIPELINE"]
-        D1["Raw Data<br/>Civil Comments<br/>CIFAR-10"]
-        D2["DVC Versioning<br/>Data preprocessing<br/>Train/val splits"]
-        D3[("Feature Store<br/>Processed tensors")]
-    end
-
-    subgraph TRAIN["🧠 MODEL TRAINING"]
-        T1["DistilBERT Fine-tuning<br/>or ResNet18 Training"]
-        T2["MLflow Tracking<br/>Params, metrics, artifacts"]
-        T3["Model Registry<br/>Staging / Production"]
-    end
-
-    subgraph SERVE["🚀 MODEL SERVING"]
-        S1["FastAPI Server<br/>Load models at startup"]
-        S2["Inference Endpoints<br/>/moderate/text|image|video"]
-    end
-
-    subgraph MONITOR["📈 MONITORING"]
-        M1[("Prediction Logs<br/>SQLite Database")]
-        M2["Metrics Computation<br/>Block rate, latency, volume"]
-        M3["Drift Detection<br/>Score / Latency / Decision"]
-    end
-
-    subgraph FEEDBACK["🔄 FEEDBACK LOOP"]
-        F1["Human Feedback API<br/>/monitoring/feedback"]
-        F2["Feedback Labels<br/>Corrected decisions"]
-        F3["Drift >20%?"]
-    end
-
-    subgraph RETRAIN["🔁 RETRAINING"]
-        R1["Fetch New Data<br/>Last 7 days + feedback"]
-        R2["Create Dataset<br/>Augmented + relabeled"]
-        R3["Launch Training Job<br/>Same hyperparameters"]
-        R4["Validate Model<br/>A/B test in shadow mode"]
-    end
-
-    D1 --> D2
-    D2 --> D3
-    
-    D3 --> T1
-    T1 --> T2
-    T2 --> T3
-    
-    T3 --> S1
-    S1 --> S2
-    
-    S2 --> M1
-    M1 --> M2
-    M2 --> M3
-    
-    F1 --> F2
-    F2 --> M1
-    
-    M3 --> F3
-    F3 -->|No| MONITOR
-    F3 -->|Yes| R1
-    
-    R1 --> R2
-    R2 --> R3
-    R3 --> R4
-    R4 -->|"Better than current?"| T3
-    R4 -->|"No improvement"| MONITOR
-
-    style DATA fill:#e1f5fe
-    style TRAIN fill:#f3e5f5
-    style SERVE fill:#e8f5e9
-    style MONITOR fill:#fff3e0
-    style FEEDBACK fill:#ffebee
-    style RETRAIN fill:#fce4ec
-
-##🤖 Inference Request-Response Flow (Detailed)
-sequenceDiagram
-    autonumber
-    participant Client
-    participant API as FastAPI Load Balancer
-    participant Auth as API Key Auth
-    participant TextModel as DistilBERT Model
-    participant ImageModel as ResNet18 Model
-    participant VideoModel as MobileNetV2 Model
-    participant Risk as Risk Scoring Engine
-    participant Decision as Decision Engine
-    participant DB as SQLite DB
-    participant Monitor as Drift Detector
-
-    Client->>API: POST /moderate/all (text + image)
-    API->>Auth: Validate API key
-    Auth-->>API: Authorized
-    
-    par Parallel Inference
-        API->>TextModel: Predict text toxicity
-        TextModel-->>API: {toxic:0.94, insult:0.91}
-    and
-        API->>ImageModel: Predict image safety
-        ImageModel-->>API: {class:"violence", conf:0.96}
-    and
-        API->>VideoModel: (if video provided)
-        VideoModel-->>API: {avg_conf:0.89}
-    end
-    
-    API->>Risk: Aggregate scores (weights: text=0.3, image=0.5, video=0.2)
-    Risk-->>API: Risk Score = 0.87
-    
-    API->>Decision: Apply rules: Risk>0.8 → BLOCK, 0.5-0.8 → REVIEW
-    Decision-->>API: Decision = "BLOCK"
-    
-    API->>DB: Log prediction {timestamp, scores, decision, latency}
-    DB-->>API: Logged
-    
-    API-->>Client: 200 OK {is_violation:true, decision:"block"}
-    
-    Note over DB,Monitor: Drift detection runs every 6 hours
-    Monitor->>DB: Query last 6h vs previous 6h
-    alt Drift > 20%
-        Monitor->>API: Trigger retraining alert
-    end
-
-
-##📊 Data Pipeline (ETL) Detailed Flow
+```mermaid
 flowchart LR
-    subgraph SOURCES["📁 DATA SOURCES"]
-        S1["Google Civil Comments<br/>1.8M rows • CSV"]
-        S2["CIFAR-10<br/>60K images • PNG"]
-        S3["Custom Dataset<br/>(future)"]
-    end
+    A[Download data] --> B[Preprocess]
+    B --> C[Train DistilBERT and ResNet]
+    C --> D[Log to MLflow]
+    D --> E[Serve via FastAPI]
+    E --> F[Monitor predictions]
+    F --> G{Drift detected?}
+    G -->|yes| H[Trigger retraining]
+    H --> C
+    G -->|no| F
+```
 
-    subgraph EXTRACT["⬇️ EXTRACT"]
-        E1["download_data.py<br/>wget / Kaggle API"]
-        E2["Validate checksums<br/>Verify integrity"]
-    end
+##Diagram 3 — MLOps closed loop (how the system keeps improving itself automatically):
 
-    subgraph TRANSFORM["🔄 TRANSFORM"]
-        direction TB
-        T1_TEXT["Text Pipeline:<br/>• Lowercase<br/>• Remove special chars<br/>• DistilBERT tokenization<br/>• Pad/truncate to 512"]
-        T2_IMAGE["Image Pipeline:<br/>• Resize 224×224<br/>• Normalize (ImageNet stats)<br/>• ToTensor<br/>• Save as .pt"]
-        T3_VIDEO["Video Pipeline:<br/>• Extract frames (5 fps)<br/>• Resize each frame<br/>• Stack tensors"]
-    end
+<img width="1440" height="680" alt="image" src="https://github.com/user-attachments/assets/f5a086b1-0d07-406f-aa08-eae9266f9d06" />
 
-    subgraph LOAD["💾 LOAD"]
-        L1[("Processed Text<br/>.parquet + .txt")]
-        L2[("Processed Images<br/>.pt tensors")]
-        L3[("Video Frames<br/>.npy arrays")]
-    end
+---
 
-    subgraph VERSION["📌 VERSION CONTROL"]
-        V1["DVC Track<br/>dvc add data/processed"]
-        V2["Remote Storage<br/>S3 / GCS / Drive"]
-    end
+## Models
 
-    S1 --> E1
-    S2 --> E1
-    S3 --> E1
-    
-    E1 --> E2
-    E2 --> T1_TEXT
-    E2 --> T2_IMAGE
-    E2 --> T3_VIDEO
-    
-    T1_TEXT --> L1
-    T2_IMAGE --> L2
-    T3_VIDEO --> L3
-    
-    L1 --> V1
-    L2 --> V1
-    L3 --> V1
-    
-    V1 --> V2
+| Model | Job | Trained On |
+|-------|-----|------------|
+| DistilBERT | Detects toxic text | Google Civil Comments 1.8M rows |
+| ResNet18 | Detects unsafe images | CIFAR-10 60K images |
+| Frame Sampler | Checks video safety | Reuses ResNet18 on frames |
 
-    style SOURCES fill:#e1f5fe
-    style EXTRACT fill:#fff3e0
-    style TRANSFORM fill:#f3e5f5
-    style LOAD fill:#e8f5e9
-    style VERSION fill:#e0f2f1
+---
+##Diagram 4 — Model comparison (DistilBERT vs ResNet vs Frame sampler side by side):
 
-##🧠 Model Training Pipeline (Detailed)
+<img width="1440" height="636" alt="image" src="https://github.com/user-attachments/assets/07523cc1-0bc1-4e65-abbb-b2e43096f44a" />
 
-flowchart TB
-    subgraph INPUT["📊 TRAINING DATA"]
-        I1["Train Set<br/>80% of data"]
-        I2["Validation Set<br/>10% of data"]
-        I3["Test Set<br/>10% of data"]
-    end
 
-    subgraph CONFIG["⚙️ CONFIGURATION"]
-        C1["Model:<br/>DistilBERT / ResNet18"]
-        C2["Hyperparameters:<br/>lr, batch_size, epochs"]
-        C3["Loss Function:<br/>CrossEntropy<br/>+ class weights"]
-    end
+## Tech Stack
 
-    subgraph TRAINING["🔄 TRAINING LOOP"]
-        direction TB
-        T1["Initialize Model<br/>Load pretrained weights"]
-        T2["Forward Pass<br/>Compute predictions"]
-        T3["Calculate Loss<br/>Backpropagate"]
-        T4["Optimizer Step<br/>Update weights"]
-        T5["Validation<br/>Every N epochs"]
-    end
+| Category | Tools |
+|----------|-------|
+| Language | Python 3.11 |
+| ML Models | PyTorch, HuggingFace Transformers |
+| Computer Vision | OpenCV, torchvision, Pillow |
+| API Server | FastAPI, Uvicorn |
+| MLOps | MLflow, DVC |
+| Deployment | Docker, GitHub Actions |
+| Monitoring | SQLite, custom drift detector |
+| Testing | pytest |
 
-    subgraph TRACKING["📈 MLFLOW TRACKING"]
-        M1["Log Parameters<br/>lr, batch_size, model"]
-        M2["Log Metrics<br/>loss, accuracy, f1"]
-        M3["Log Artifacts<br/>Model weights, plots"]
-    end
+---
 
-    subgraph OUTPUT["💾 OUTPUT"]
-        O1["Best Model<br/>.bin / .pth file"]
-        O2["Model Registry<br/>Staging tag"]
-        O3["Confusion Matrix<br/>PR Curves"]
-    end
+## Project Structure
+content-moderation-system/
+├── .github/workflows/ci-cd.yml
+├── docker/Dockerfile
+├── models/
+│   ├── text/distilbert_moderation.pt
+│   └── image/resnet_moderation.pt
+├── src/
+│   ├── api/
+│   │   ├── main.py
+│   │   ├── model_loader.py
+│   │   ├── predictor.py
+│   │   └── risk_engine.py
+│   ├── data/
+│   │   ├── download_data.py
+│   │   ├── preprocess_text.py
+│   │   ├── preprocess_image.py
+│   │   └── run_pipeline.py
+│   ├── models/
+│   │   ├── train_text.py
+│   │   ├── train_image.py
+│   │   └── video_sampler.py
+│   └── monitoring/
+│       ├── monitor.py
+│       └── retrain_trigger.py
+├── tests/
+│   ├── test_api.py
+│   └── test_risk_engine.py
+└── requirements.txt
 
-    I1 --> TRAINING
-    I2 --> TRAINING
-    I3 -->|"Final evaluation"| O3
-    
-    C1 --> T1
-    C2 --> T2
-    C3 --> T3
-    
-    T1 --> T2
-    T2 --> T3
-    T3 --> T4
-    T4 --> T5
-    T5 -->|"If val loss improves"| T1
-    T5 -->|"Save checkpoint"| O1
-    
-    T1 -.-> M1
-    T2 -.-> M2
-    T3 -.-> M2
-    O1 -.-> M3
-    O1 --> O2
+---
+
+## How to Run
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/Poorvi-5/content-moderation-system.git
+cd content-moderation-system
+
+# 2. Create virtual environment
+python -m venv venv
+venv\Scripts\activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Download and process data
+python src/data/run_pipeline.py
+
+# 5. Train models
+python -m src.models.train_text
+python -m src.models.train_image
+
+# 6. Start the API
+python -m uvicorn src.api.main:app --reload --port 8000
+```
+
+Open `http://localhost:8000/docs` to test all endpoints.
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | What it does |
+|--------|----------|--------------|
+| GET | /health | Check if server is running |
+| POST | /moderate/text | Moderate a text string |
+| POST | /moderate/image | Moderate an image file |
+| POST | /moderate/video | Moderate a video file |
+| POST | /moderate/all | Moderate all three at once |
+| GET | /monitoring/metrics | See prediction stats |
+| GET | /monitoring/drift | Check for model drift |
+| POST | /monitoring/feedback | Submit human feedback |
+
+---
+
+## Example Request
+
+```bash
+curl -X POST http://localhost:8000/moderate/text \
+  -H "Content-Type: application/json" \
+  -d '{"text": "I love this project!", "user_id": "user1"}'
+```
+
+Response:
+```json
+{
+  "decision": "allow",
+  "risk_score": 0.03,
+  "reason": "risk score 0.03 within acceptable range",
+  "modality_scores": {"text": 0.03},
+  "latency_ms": 42.1
+}
+```
+
+---
+
+## View MLflow Dashboard
+
+```bash
+mlflow ui
+```
+Open `http://localhost:5000` to see all training runs, metrics, and model artifacts.
+
+---
+
+## Run Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+---
+
+## Resume One-Liner
+
+> Built a production-grade multimodal content moderation system with DistilBERT fine-tuning for text toxicity detection, ResNet18 for image classification, FastAPI serving, Docker containerization, GitHub Actions CI/CD, MLflow experiment tracking, automated drift detection, and continuous retraining loop.
+
+---
+
+## License
+
+MIT License
+
+---
+
+*Built as a production-grade ML portfolio project*
 
     style INPUT fill:#e1f5fe
     style CONFIG fill:#fff3e0
