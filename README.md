@@ -288,7 +288,7 @@ MIT License
 
 ---
 
-*Built as a production-grade ML portfolio project*
+Built a production-grade real-time multimodal content moderation system (text/image/video) with MLOps, drift detection, and automated retraining, using DistilBERT, ResNet18, FastAPI, Docker, GitHub Actions, and MLflow.
 
     style INPUT fill:#e1f5fe
     style CONFIG fill:#fff3e0
